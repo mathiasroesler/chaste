@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Copyright (C) Victor Chang Cardiac Research Institute, 2012. (Original author A.Sadrieh)."""
 
 """Copyright (c) 2005-2021, University of Oxford.
