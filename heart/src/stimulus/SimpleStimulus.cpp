@@ -80,6 +80,31 @@ void SimpleStimulus::SetStartTime(double startTime)
     mTimeOfStimulus = startTime;
 }
 
+void SimpleStimulus::SetMagnitude(double magnitude)
+{
+	mMagnitudeOfStimulus = magnitude;
+}
+
+void SimpleStimulus::SetDuration(double duration)
+{
+	mDuration = duration;
+}
+
+double SimpleStimulus::GetStartTime()
+{
+	return mTimeOfStimulus;
+}
+
+double SimpleStimulus::GetMagnitude()
+{
+	return mMagnitudeOfStimulus;
+}
+
+double SimpleStimulus::GetDuration()
+{
+	return mDuration;
+}
+
 // Serialization for Boost >= 1.36
 #include "SerializationExportWrapperForCpp.hpp"
 CHASTE_CLASS_EXPORT(SimpleStimulus)
