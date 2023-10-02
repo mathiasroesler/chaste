@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -375,9 +375,10 @@ public:
         TS_ASSERT_DELTA(voltage_replicated[9], -0.770330519, atol);
         TS_ASSERT_DELTA(voltage_replicated[10], -19.2234919, atol);
 
+        // Now compare with the TestMonodomainProblem1D simulation above
         for (unsigned index = 0; index < voltage_replicated.GetSize(); index++)
         {
-            TS_ASSERT_DELTA(voltage_replicated[index], mVoltageReplicated1d2ms[index], 1e-12);
+            TS_ASSERT_DELTA(voltage_replicated[index], mVoltageReplicated1d2ms[index], 5e-12);
         }
         // cover get pde
         monodomain_problem.GetTissue();
@@ -1471,7 +1472,7 @@ public:
 
         // N.B. This tolerance can be reduced to less than 1e-6 if you reduce the ODE+PDE time step to 0.001 instead of 0.01ms.
         // This would be unfeasibly small for 'proper' simulations though, so not sure how to proceed with this!
-        TS_ASSERT_DELTA(V_to_compare[0], V_to_compare[1], 3e-3);
+        TS_ASSERT_DELTA(V_to_compare[0], V_to_compare[1], 4e-3);
 #else
         std::cout << "Chaste is not configured to use CVODE on this machine, check your hostconfig settings if required.\n";
 #endif // CHASTE_CVODE

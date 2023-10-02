@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -386,7 +386,7 @@ public:
          */
         HoneycombMeshGenerator generator(10, 10, 0);
         /* Get the mesh using the {{{GetCircularMesh()}}} method. */
-        MutableMesh<2,2>* p_mesh = generator.GetCircularMesh(5);
+        boost::shared_ptr<MutableMesh<2,2> > p_mesh = generator.GetCircularMesh(5);
 
         /* Next, we create some cells. First, define the cells vector. */
         std::vector<CellPtr> cells;

@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -49,12 +49,15 @@ class VertexMeshWriter;
 #include "ChasteSerialization.hpp"
 
 #include "AbstractMesh.hpp"
+#include "Edge.hpp"
+#include "EdgeHelper.hpp"
 #include "ArchiveLocationInfo.hpp"
 #include "TetrahedralMesh.hpp"
 #include "VertexElement.hpp"
 #include "VertexElementMap.hpp"
 #include "VertexMeshReader.hpp"
 #include "VertexMeshWriter.hpp"
+
 
 /**
  * A vertex-based mesh class, in which elements may contain different numbers of nodes.
@@ -75,12 +78,16 @@ class VertexMesh : public AbstractMesh<ELEMENT_DIM, SPACE_DIM>
 {
     friend class TestVertexMesh;
 
+
 protected:
     /** Vector of pointers to VertexElements. */
     std::vector<VertexElement<ELEMENT_DIM, SPACE_DIM>*> mElements;
 
     /** Vector of pointers to VertexElements. */
     std::vector<VertexElement<ELEMENT_DIM - 1, SPACE_DIM>*> mFaces;
+
+    /** Object that owns and manages edges **/
+    EdgeHelper<SPACE_DIM> mEdgeHelper;
 
     /**
      * Map that is used only when the vertex mesh is used to represent
@@ -126,6 +133,12 @@ protected:
      * @return local index
      */
     unsigned SolveBoundaryElementMapping(unsigned index) const;
+
+    /**
+     * Build edges from elements. Populates edges in EdgeHelper class
+     * @param rElements from which edges are built
+     */
+    void GenerateEdgesFromElements(std::vector<VertexElement<ELEMENT_DIM, SPACE_DIM>*>& rElements);
 
     /**
      * Populate mNodes with locations corresponding to the element
@@ -183,7 +196,6 @@ protected:
     void save(Archive& archive, const unsigned int version) const
     {
         archive& boost::serialization::base_object<AbstractMesh<ELEMENT_DIM, SPACE_DIM> >(*this);
-
         // Create a mesh writer pointing to the correct file and directory
         VertexMeshWriter<ELEMENT_DIM, SPACE_DIM> mesh_writer(ArchiveLocationInfo::GetArchiveRelativePath(),
                                                              ArchiveLocationInfo::GetMeshFilename(),
@@ -254,9 +266,10 @@ public:
      * \todo Merge with 3D Voronoi constructor? (see #1075)
      *
      * @param rMesh a tetrahedral mesh
-     * @param isPeriodic a boolean that indicates whether the mesh is periodic or not
+     * @param isPeriodic a boolean that indicates whether the mesh is periodic or not. Defaults to false.
+     * @param isBounded a boolean to indicate whether to bound the voronoi tesselation. Defaults to false.
      */
-    VertexMesh(TetrahedralMesh<2, 2>& rMesh, bool isPeriodic = false);
+    VertexMesh(TetrahedralMesh<2, 2>& rMesh, bool isPeriodic = false, bool isBounded = false);
 
     /**
      * Alternative 3D 'Voronoi' constructor. Creates a Voronoi tessellation of a given tetrahedral mesh,
@@ -277,6 +290,29 @@ public:
      * Destructor.
      */
     virtual ~VertexMesh();
+
+    /**
+     * Gets the number of edges in the mesh
+     * @return The number of edges in the mesh
+     */
+    unsigned GetNumEdges() const;
+
+    /**
+     * Fetches an edge.
+     * 
+     * @param index global index of the edge
+     * @return Pointer to the edge at the index
+     */
+    Edge<SPACE_DIM>* GetEdge(unsigned index) const;
+
+    /**
+     * Fetches EdgeHelper.
+     * 
+     * @param Global index of the edge
+     * 
+     * @return Pointer to the edge at the index
+     */
+    const EdgeHelper<SPACE_DIM>& rGetEdgeHelper() const;
 
     /**
      * @return the number of Nodes in the mesh.

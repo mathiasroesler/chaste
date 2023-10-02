@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -133,7 +133,7 @@ public:
 
         /* First we create a regular vertex mesh. */
         HoneycombVertexMeshGenerator generator(5, 5);
-        MutableVertexMesh<2,2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<MutableVertexMesh<2,2> > p_mesh = generator.GetMesh();
 
         /* We then create some cells, each with a cell-cycle model, {{{UniformG1GenerationalCellCycleModel}}} and a subcellular reaction network model
          * {{{DeltaNotchSrnModel}}}, which
@@ -187,7 +187,7 @@ public:
         MAKE_PTR(NagaiHondaForce<2>, p_force);
         simulator.AddForce(p_force);
 
-        /* This modifier assigns target areas to each cell, which are required by the {{{NagaiHondaForce}}}.
+        /* This modifier assigns target areas to each cell.
          */
         MAKE_PTR(SimpleTargetAreaModifier<2>, p_growth_modifier);
         simulator.AddSimulationModifier(p_growth_modifier);
@@ -221,7 +221,7 @@ public:
          * except we now create a 'nodes-only mesh' and {{{NodeBasedCellPopulation}}}.
          */
         HoneycombMeshGenerator generator(5, 5);
-        MutableMesh<2,2>* p_generating_mesh = generator.GetMesh();
+        boost::shared_ptr<MutableMesh<2,2> > p_generating_mesh = generator.GetMesh();
         NodesOnlyMesh<2> mesh;
         /* The mechanics cut-off length (second argument) is used in this simulation to determine nearest
          * neighbours for the purpose of the Delta/Notch intercellular signalling model.

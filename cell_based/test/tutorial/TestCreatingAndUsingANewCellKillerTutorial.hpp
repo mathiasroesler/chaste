@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -70,6 +70,11 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* The next header defines a base class for cell killers, from which the new
  * cell killer class will inherit. */
 #include "AbstractCellKiller.hpp"
+
+/* The next header defines a writer which outputs information on cells killed to the file
+ * {{{removals.dat}}} . */
+#include "CellRemovalLocationsWriter.hpp"
+
 /* The remaining header files define classes that will be used in the cell-based
  * simulation test. We have encountered each of these header files in previous cell-based
  * Chaste tutorials. */
@@ -115,7 +120,7 @@ public:
     {}
 
     /* The second public method overrides {{{CheckAndLabelCellsForApoptosisOrDeath()}}}.
-     * This method iterates over all cells in the population, and calls {{{Kill()}}} on
+     * This method iterates over all cells in the population, and calls {{{KillCell()}}} on
      * any cell whose centre is located outside the ellipse (''x''/20)^2^ + (''y''/10)^2^ < 1. */
     void CheckAndLabelCellsForApoptosisOrDeath()
     {
@@ -128,7 +133,9 @@ public:
 
             if (pow(location[0]/20, 2) + pow(location[1]/10, 2) > 1.0)
             {
-                cell_iter->Kill();
+                /* This line marks the cell as killed and stores removal information for use by
+                 * by the cell writers if the writer {{{CellRemovalLocationsWriter}}} is included.*/
+                this->mpCellPopulation->KillCell(*cell_iter, "MyCellKiller");
             }
         }
     }
@@ -206,7 +213,7 @@ public:
     {
         /* We use the honeycomb mesh generator to create a honeycomb mesh. */
         HoneycombMeshGenerator generator(20, 20, 0);
-        MutableMesh<2,2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<MutableMesh<2,2> > p_mesh = generator.GetMesh();
 
         /* We then construct and initialise some cells, each with a
          * {{{FixedG1GenerationalCellCycleModel}}}, using the helper class
@@ -221,6 +228,10 @@ public:
 
         /* We now use the cell population to construct a cell killer object. */
         MyCellKiller my_cell_killer(&cell_population);
+
+        /* To store information about the lovations and times of the killed cells use the
+         * {{{CellRemovalLocationsWriter}}} */
+        cell_population.AddCellPopulationEventWriter<CellRemovalLocationsWriter>();
 
         /* To test that we have implemented the cell killer correctly, we call the
          * overridden method {{{CheckAndLabelCellsForApoptosisOrDeath}}}... */
@@ -298,7 +309,7 @@ public:
     {
         /* We proceed as before, creating a mesh-based cell population. */
         HoneycombMeshGenerator generator(20, 20, 0);
-        MutableMesh<2,2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<MutableMesh<2,2> > p_mesh = generator.GetMesh();
 
         std::vector<CellPtr> cells;
         CellsGenerator<FixedG1GenerationalCellCycleModel, 2> cells_generator;

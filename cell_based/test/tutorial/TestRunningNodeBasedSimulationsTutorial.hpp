@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -114,7 +114,7 @@ public:
          * cells) wide, and 2 nodes high.
          */
         HoneycombMeshGenerator generator(2, 2);
-        MutableMesh<2,2>* p_generating_mesh = generator.GetMesh();
+        boost::shared_ptr<MutableMesh<2,2> > p_generating_mesh = generator.GetMesh();
         /* Once we have a {{{MutableMesh}}} we can generate a {{{NodesOnlyMesh}}} from it using the
          * following commands. Note you can also generate the {{{NodesOnlyMesh}}} from a collection of
          * nodes, see  [class:NodesOnlyMesh NodesOnlyMesh] for details.

@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -38,6 +38,8 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "CellBasedEventHandler.hpp"
 #include "Cylindrical2dMesh.hpp"
 #include "Cylindrical2dVertexMesh.hpp"
+#include "Toroidal2dMesh.hpp"
+#include "Toroidal2dVertexMesh.hpp"
 #include "NodesOnlyMesh.hpp"
 #include "CellId.hpp"
 #include "CellVolumesWriter.hpp"
@@ -58,7 +60,7 @@ MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::MeshBasedCellPopulation(MutableM
       mUseAreaBasedDampingConstant(false),
       mAreaBasedDampingConstantParameter(0.1),
       mWriteVtkAsPoints(false),
-      mOutputMeshInVtk(false),
+      mBoundVoronoiTessellation(false),
       mHasVariableRestLength(false)
 {
     mpMutableMesh = static_cast<MutableMesh<ELEMENT_DIM,SPACE_DIM>* >(&(this->mrMesh));
@@ -106,10 +108,17 @@ bool MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::UseAreaBasedDampingConstant
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
-void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::SetAreaBasedDampingConstant(bool useAreaBasedDampingConstant)
+void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::SetAreaBasedDampingConstant(
+    [[maybe_unused]] bool useAreaBasedDampingConstant) // [[maybe_unused]] due to unused-but-set-parameter warning in GCC 7,8,9
 {
-    assert(SPACE_DIM == 2); // LCOV_EXCL_LINE
-    mUseAreaBasedDampingConstant = useAreaBasedDampingConstant;
+    if constexpr (SPACE_DIM == 2)
+    {
+        mUseAreaBasedDampingConstant = useAreaBasedDampingConstant;
+    }
+    else
+    {
+        NEVER_REACHED;
+    }
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
@@ -144,28 +153,33 @@ double MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::GetDampingConstant(unsign
          * where d0, d1 are parameters, A is the cell's area, and old_damping_const
          * is the damping constant if not using mUseAreaBasedDampingConstant
          */
-        assert(SPACE_DIM == 2); // LCOV_EXCL_LINE
+        if constexpr (SPACE_DIM == 2)
+        {
+            double rest_length = 1.0;
+            double d0 = mAreaBasedDampingConstantParameter;
 
-        double rest_length = 1.0;
-        double d0 = mAreaBasedDampingConstantParameter;
+            /**
+             * Compute the parameter d1 such that d0+A*d1=1, where A is the equilibrium area
+             * of a cell (this is equal to sqrt(3.0)/4, which is a third of the area of a regular
+             * hexagon of edge length 1)
+             */
+            double d1 = 2.0*(1.0 - d0)/(sqrt(3.0)*rest_length*rest_length);
 
-        /**
-         * Compute the parameter d1 such that d0+A*d1=1, where A is the equilibrium area
-         * of a cell (this is equal to sqrt(3.0)/4, which is a third of the area of a regular
-         * hexagon of edge length 1)
-         */
-        double d1 = 2.0*(1.0 - d0)/(sqrt(3.0)*rest_length*rest_length);
+            double area_cell = GetVolumeOfVoronoiElement(nodeIndex);
 
-        double area_cell = GetVolumeOfVoronoiElement(nodeIndex);
+            /**
+             * The cell area should not be too large - the next assertion is to avoid
+             * getting an infinite cell area, which may occur if area-based viscosity
+             * is chosen in the absence of ghost nodes.
+             */
+            assert(area_cell < 1000);
 
-        /**
-         * The cell area should not be too large - the next assertion is to avoid
-         * getting an infinite cell area, which may occur if area-based viscosity
-         * is chosen in the absence of ghost nodes.
-         */
-        assert(area_cell < 1000);
-
-        damping_multiplier = d0 + area_cell*d1;
+            damping_multiplier = d0 + area_cell*d1;
+        }
+        else
+        {
+            NEVER_REACHED;
+        }
     }
 
     return damping_multiplier;
@@ -441,68 +455,73 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::TessellateIfNeeded()
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
-void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::DivideLongSprings(double springDivisionThreshold)
+void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::DivideLongSprings([[maybe_unused]] double springDivisionThreshold) // [[maybe_unused]] due to unused-but-set-parameter warning in GCC 7,8,9
 {
     // Only implemented for 2D elements
-    assert(ELEMENT_DIM == 2); // LCOV_EXCL_LINE
-
-    std::vector<c_vector<unsigned, 5> > new_nodes;
-    new_nodes = rGetMesh().SplitLongEdges(springDivisionThreshold);
-
-    // Add new cells onto new nodes
-    for (unsigned index=0; index<new_nodes.size(); index++)
+    if constexpr (ELEMENT_DIM == 2)
     {
-        // Copy the cell attached to one of the neighbouring nodes onto the new node
-        unsigned new_node_index = new_nodes[index][0];
-        unsigned node_a_index = new_nodes[index][1];
-        unsigned node_b_index = new_nodes[index][2];
+        std::vector<c_vector<unsigned, 5> > new_nodes;
+        new_nodes = rGetMesh().SplitLongEdges(springDivisionThreshold);
 
-         CellPtr p_neighbour_cell = this->GetCellUsingLocationIndex(node_a_index);
-
-        // Create copy of cell property collection to modify for daughter cell
-        CellPropertyCollection daughter_property_collection = p_neighbour_cell->rGetCellPropertyCollection();
-
-        // Remove the CellId from the daughter cell a new one will be assigned in the constructor
-        daughter_property_collection.RemoveProperty<CellId>();
-
-        CellPtr p_new_cell(new Cell(p_neighbour_cell->GetMutationState(),
-                                    p_neighbour_cell->GetCellCycleModel()->CreateCellCycleModel(),
-                                    p_neighbour_cell->GetSrnModel()->CreateSrnModel(),
-                                    false,
-                                    daughter_property_collection));
-
-        // Add new cell to cell population
-        this->mCells.push_back(p_new_cell);
-        this->AddCellUsingLocationIndex(new_node_index,p_new_cell);
-
-        // Update rest lengths
-
-        // Remove old node pair // note node_a_index < node_b_index
-        std::pair<unsigned,unsigned> node_pair = this->CreateOrderedPair(node_a_index, node_b_index);
-        double old_rest_length  = mSpringRestLengths[node_pair];
-
-        std::map<std::pair<unsigned,unsigned>, double>::iterator  iter = mSpringRestLengths.find(node_pair);
-        mSpringRestLengths.erase(iter);
-
-        // Add new pairs
-        node_pair = this->CreateOrderedPair(node_a_index, new_node_index);
-        mSpringRestLengths[node_pair] = 0.5*old_rest_length;
-
-        node_pair = this->CreateOrderedPair(node_b_index, new_node_index);
-        mSpringRestLengths[node_pair] = 0.5*old_rest_length;
-
-        // If necessary add other new spring rest lengths
-        for (unsigned pair_index=3; pair_index<5; pair_index++)
+        // Add new cells onto new nodes
+        for (unsigned index=0; index<new_nodes.size(); index++)
         {
-            unsigned other_node_index = new_nodes[index][pair_index];
+            // Copy the cell attached to one of the neighbouring nodes onto the new node
+            unsigned new_node_index = new_nodes[index][0];
+            unsigned node_a_index = new_nodes[index][1];
+            unsigned node_b_index = new_nodes[index][2];
 
-            if (other_node_index != UNSIGNED_UNSET)
+            CellPtr p_neighbour_cell = this->GetCellUsingLocationIndex(node_a_index);
+
+            // Create copy of cell property collection to modify for daughter cell
+            CellPropertyCollection daughter_property_collection = p_neighbour_cell->rGetCellPropertyCollection();
+
+            // Remove the CellId from the daughter cell a new one will be assigned in the constructor
+            daughter_property_collection.RemoveProperty<CellId>();
+
+            CellPtr p_new_cell(new Cell(p_neighbour_cell->GetMutationState(),
+                                        p_neighbour_cell->GetCellCycleModel()->CreateCellCycleModel(),
+                                        p_neighbour_cell->GetSrnModel()->CreateSrnModel(),
+                                        false,
+                                        daughter_property_collection));
+
+            // Add new cell to cell population
+            this->mCells.push_back(p_new_cell);
+            this->AddCellUsingLocationIndex(new_node_index,p_new_cell);
+
+            // Update rest lengths
+
+            // Remove old node pair // note node_a_index < node_b_index
+            std::pair<unsigned,unsigned> node_pair = this->CreateOrderedPair(node_a_index, node_b_index);
+            double old_rest_length  = mSpringRestLengths[node_pair];
+
+            std::map<std::pair<unsigned,unsigned>, double>::iterator  iter = mSpringRestLengths.find(node_pair);
+            mSpringRestLengths.erase(iter);
+
+            // Add new pairs
+            node_pair = this->CreateOrderedPair(node_a_index, new_node_index);
+            mSpringRestLengths[node_pair] = 0.5*old_rest_length;
+
+            node_pair = this->CreateOrderedPair(node_b_index, new_node_index);
+            mSpringRestLengths[node_pair] = 0.5*old_rest_length;
+
+            // If necessary add other new spring rest lengths
+            for (unsigned pair_index=3; pair_index<5; pair_index++)
             {
-                node_pair = this->CreateOrderedPair(other_node_index, new_node_index);
-                double new_rest_length = rGetMesh().GetDistanceBetweenNodes(new_node_index, other_node_index);
-                mSpringRestLengths[node_pair] = new_rest_length;
+                unsigned other_node_index = new_nodes[index][pair_index];
+
+                if (other_node_index != UNSIGNED_UNSET)
+                {
+                    node_pair = this->CreateOrderedPair(other_node_index, new_node_index);
+                    double new_rest_length = rGetMesh().GetDistanceBetweenNodes(new_node_index, other_node_index);
+                    mSpringRestLengths[node_pair] = new_rest_length;
+                }
             }
         }
+    }
+    else
+    {
+        NEVER_REACHED;
     }
 }
 
@@ -583,6 +602,12 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::AcceptPopulationCountWriter
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
+void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::AcceptPopulationEventWriter(boost::shared_ptr<AbstractCellPopulationEventWriter<ELEMENT_DIM, SPACE_DIM> > pPopulationEventWriter)
+{
+    pPopulationEventWriter->Visit(this);
+}
+
+template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
 void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::AcceptCellWriter(boost::shared_ptr<AbstractCellWriter<ELEMENT_DIM, SPACE_DIM> > pCellWriter, CellPtr pCell)
 {
     pCellWriter->VisitCell(pCell, this);
@@ -599,10 +624,6 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::WriteVtkResultsToFile(const
 
     // Store the number of cells for which to output data to VTK
     unsigned num_cells_from_mesh = GetNumNodes();
-    if (!mWriteVtkAsPoints && (mpVoronoiTessellation != nullptr))
-    {
-        num_cells_from_mesh = mpVoronoiTessellation->GetNumElements();
-    }
 
     // When outputting any CellData, we assume that the first cell is representative of all cells
     unsigned num_cell_data_items = this->Begin()->GetCellData()->GetNumItems();
@@ -615,17 +636,10 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::WriteVtkResultsToFile(const
         cell_data.push_back(cell_data_var);
     }
 
-    if (mOutputMeshInVtk)
-    {
-        // Create mesh writer for VTK output
-        VtkMeshWriter<ELEMENT_DIM, SPACE_DIM> mesh_writer(rDirectory, "mesh_"+time.str(), false);
-        mesh_writer.WriteFilesUsingMesh(rGetMesh());
-    }
-
     if (mWriteVtkAsPoints)
     {
         // Create mesh writer for VTK output
-        VtkMeshWriter<SPACE_DIM, SPACE_DIM> cells_writer(rDirectory, "results_"+time.str(), false);
+        VtkMeshWriter<ELEMENT_DIM, SPACE_DIM> cells_writer(rDirectory, "mesh_results_"+time.str(), false);
 
         // Iterate over any cell writers that are present
         unsigned num_cells = this->GetNumAllCells();
@@ -669,30 +683,18 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::WriteVtkResultsToFile(const
             cells_writer.AddPointData(cell_data_names[var], cell_data[var]);
         }
 
-        // Make a copy of the nodes in a disposable mesh for writing
-        {
-            std::vector<Node<SPACE_DIM>* > nodes;
-            for (unsigned index=0; index<this->mrMesh.GetNumNodes(); index++)
-            {
-                Node<SPACE_DIM>* p_node = this->mrMesh.GetNode(index);
-                nodes.push_back(p_node);
-            }
-
-            NodesOnlyMesh<SPACE_DIM> mesh;
-            mesh.ConstructNodesWithoutMesh(nodes, 1.5); // Arbitrary cut off as connectivity not used.
-            cells_writer.WriteFilesUsingMesh(mesh);
-        }
-
+        // Write data using the mesh
+        cells_writer.WriteFilesUsingMesh(rGetMesh());
         *(this->mpVtkMetaFile) << "        <DataSet timestep=\"";
         *(this->mpVtkMetaFile) << num_timesteps;
-        *(this->mpVtkMetaFile) << "\" group=\"\" part=\"0\" file=\"results_";
+        *(this->mpVtkMetaFile) << "\" group=\"\" part=\"0\" file=\"mesh_results_";
         *(this->mpVtkMetaFile) << num_timesteps;
         *(this->mpVtkMetaFile) << ".vtu\"/>\n";
     }
-    else if (mpVoronoiTessellation != nullptr)
+    if (mpVoronoiTessellation != nullptr)
     {
         // Create mesh writer for VTK output
-        VertexMeshWriter<ELEMENT_DIM, SPACE_DIM> mesh_writer(rDirectory, "results", false);
+        VertexMeshWriter<ELEMENT_DIM, SPACE_DIM> mesh_writer(rDirectory, "voronoi_results", false);
         std::vector<double> cell_volumes(num_cells_from_mesh);
 
         // Iterate over any cell writers that are present
@@ -749,7 +751,7 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::WriteVtkResultsToFile(const
         mesh_writer.WriteVtkUsingMesh(*mpVoronoiTessellation, time.str());
         *(this->mpVtkMetaFile) << "        <DataSet timestep=\"";
         *(this->mpVtkMetaFile) << num_timesteps;
-        *(this->mpVtkMetaFile) << "\" group=\"\" part=\"0\" file=\"results_";
+        *(this->mpVtkMetaFile) << "\" group=\"\" part=\"0\" file=\"voronoi_results_";
         *(this->mpVtkMetaFile) << num_timesteps;
         *(this->mpVtkMetaFile) << ".vtu\"/>\n";
     }
@@ -833,15 +835,15 @@ bool MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::GetWriteVtkAsPoints()
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
-void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::SetOutputMeshInVtk(bool outputMeshInVtk)
+void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::SetBoundVoronoiTessellation(bool boundVoronoiTessellation)
 {
-    mOutputMeshInVtk = outputMeshInVtk;
+    mBoundVoronoiTessellation = boundVoronoiTessellation;
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
-bool MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::GetOutputMeshInVtk()
+bool MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::GetBoundVoronoiTessellation()
 {
-    return mOutputMeshInVtk;
+    return mBoundVoronoiTessellation;
 }
 
 template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
@@ -850,6 +852,11 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::WriteDataToVisualizerSetupF
     if (bool(dynamic_cast<Cylindrical2dMesh*>(&(this->mrMesh))))
     {
         *pVizSetupFile << "MeshWidth\t" << this->GetWidth(0) << "\n";
+    }
+    if (bool(dynamic_cast<Toroidal2dMesh*>(&(this->mrMesh))))
+    {
+        *pVizSetupFile << "MeshWidth\t" << this->GetWidth(0) << "\n";
+        *pVizSetupFile << "MeshHeight\t" << this->GetWidth(1) << "\n";
     }
 }
 
@@ -954,11 +961,16 @@ void MeshBasedCellPopulation<2>::CreateVoronoiTessellation()
     if (bool(dynamic_cast<Cylindrical2dMesh*>(&mrMesh)))
     {
         is_mesh_periodic = true;
-        mpVoronoiTessellation = new Cylindrical2dVertexMesh(static_cast<Cylindrical2dMesh &>(this->mrMesh));
+        mpVoronoiTessellation = new Cylindrical2dVertexMesh(static_cast<Cylindrical2dMesh &>(this->mrMesh), mBoundVoronoiTessellation);
+    }
+    else if (bool(dynamic_cast<Toroidal2dMesh*>(&(this->mrMesh))))
+    {
+        is_mesh_periodic = true;
+        mpVoronoiTessellation = new Toroidal2dVertexMesh(static_cast<Toroidal2dMesh &>(this->mrMesh), mBoundVoronoiTessellation);
     }
     else
     {
-        mpVoronoiTessellation = new VertexMesh<2, 2>(static_cast<MutableMesh<2, 2> &>((this->mrMesh)), is_mesh_periodic);
+        mpVoronoiTessellation = new VertexMesh<2, 2>(static_cast<MutableMesh<2, 2> &>((this->mrMesh)), is_mesh_periodic, mBoundVoronoiTessellation);
     }
 }
 
@@ -1175,7 +1187,7 @@ void MeshBasedCellPopulation<ELEMENT_DIM,SPACE_DIM>::OutputCellPopulationParamet
     *rParamsFile << "\t\t<UseAreaBasedDampingConstant>" << mUseAreaBasedDampingConstant << "</UseAreaBasedDampingConstant>\n";
     *rParamsFile << "\t\t<AreaBasedDampingConstantParameter>" <<  mAreaBasedDampingConstantParameter << "</AreaBasedDampingConstantParameter>\n";
     *rParamsFile << "\t\t<WriteVtkAsPoints>" << mWriteVtkAsPoints << "</WriteVtkAsPoints>\n";
-    *rParamsFile << "\t\t<OutputMeshInVtk>" << mOutputMeshInVtk << "</OutputMeshInVtk>\n";
+    *rParamsFile << "\t\t<BoundVoronoiTessellation>" << mBoundVoronoiTessellation << "</BoundVoronoiTessellation>\n";
     *rParamsFile << "\t\t<HasVariableRestLength>" << mHasVariableRestLength << "</HasVariableRestLength>\n";
 
     // Call method on direct parent class

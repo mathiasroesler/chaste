@@ -1,4 +1,4 @@
-# Copyright (c) 2005-2021, University of Oxford.
+# Copyright (c) 2005-2023, University of Oxford.
 # All rights reserved.
 # 
 # University of Oxford means the Chancellor, Masters and Scholars of the
@@ -57,6 +57,7 @@ int main( )
 ")
 
 add_executable(timekeeper "${generate_dir}/timekeeper.cpp")
+target_link_libraries(timekeeper PRIVATE Chaste_COMMON_DEPS)
 
 ###################################################################
 #  Setup command to generate Version and BuildInfo at build-time  #
@@ -90,6 +91,7 @@ add_custom_command(OUTPUT
         "-DALL_CXX_FLAGS=${ALL_CXX_FLAGS}"
         "-DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}"
         "-DMSVC=${MSVC}"
+        "-DChaste_CODEGEN_VERSION=${Chaste_CODEGEN_VERSION}"
         "-P" "${Chaste_SOURCE_DIR}/cmake/Modules/ChasteGenerateVersionAndBuildInfo.cmake"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     DEPENDS timekeeper

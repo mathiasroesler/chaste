@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -65,6 +65,8 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "AbstractCellBasedWithTimingsTestSuite.hpp"
 #include "SmartPointers.hpp"
 #include "CellMutationStatesCountWriter.hpp"
+#include "CellDivisionLocationsWriter.hpp"
+#include "FileComparison.hpp"
 #include "PetscSetupAndFinalize.hpp"
 
 class TestOnLatticeSimulationWithPottsBasedCellPopulation : public AbstractCellBasedWithTimingsTestSuite
@@ -89,7 +91,7 @@ public:
 
         // Create a simple tetrahedral mesh
         HoneycombMeshGenerator generator(3, 3, 0);
-        TetrahedralMesh<2,2>* p_generating_mesh = generator.GetMesh();
+        boost::shared_ptr<TetrahedralMesh<2,2> > p_generating_mesh = generator.GetMesh();
 
         // Convert this to a NodesOnlyMesh
         NodesOnlyMesh<2> mesh;
@@ -111,7 +113,7 @@ public:
     {
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(6, 2, 2, 6, 2, 2);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -133,7 +135,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(6, 2, 2, 6, 2, 2);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells (we use a NoCellCycleModel here for simplicity, since there is no proliferation)
         std::vector<CellPtr> cells;
@@ -183,7 +185,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(6, 2, 2, 6, 2, 2);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -216,7 +218,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(16, 4, 4, 24, 8, 2);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -264,7 +266,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(8, 1, 4, 10, 1, 4);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -274,6 +276,7 @@ public:
 
         // Create cell population
         PottsBasedCellPopulation<2> cell_population(*p_mesh, cells);
+        cell_population.AddCellPopulationEventWriter<CellDivisionLocationsWriter>();
 
         // Set up cell-based simulation
         OnLatticeSimulation<2> simulator(cell_population);
@@ -297,6 +300,12 @@ public:
         // Test no deaths and some births
         TS_ASSERT_EQUALS(simulator.GetNumBirths(), 1u);
         TS_ASSERT_EQUALS(simulator.GetNumDeaths(), 0u);
+
+        // Check files
+        std::string output_directory = "TestPottsMonolayerWithBirth/results_from_time_0/";
+        OutputFileHandler output_file_handler(output_directory, false);
+        std::string results_dir = output_file_handler.GetOutputDirectoryFullPath();
+        FileComparison( results_dir + "divisions.dat", "cell_based/test/data/TestPottsMonolayerWithBirth/divisions.dat").CompareFiles();
     }
 
     void TestPottsMonolayerCellSorting()
@@ -305,7 +314,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(30, 4, 4, 30, 4, 4);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -375,7 +384,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(20, 5, 4, 20, 5, 4, 1, 1, 1, false, true, true); // Periodic in x and y
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -444,7 +453,7 @@ public:
 
         // Create a simple 3D PottsMesh
         PottsMeshGenerator<3> generator(10, 2, 2, 10, 2, 2, 10, 2, 2);
-        PottsMesh<3>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<3> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -484,7 +493,7 @@ public:
 
         // Create a simple 3D PottsMesh
         PottsMeshGenerator<3> generator(12, 1, 2, 6, 1, 2, 6, 1, 2, false, true, true, true);
-        PottsMesh<3>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<3> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -527,7 +536,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(8, 1, 4, 10, 1, 4);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -573,7 +582,7 @@ public:
         unsigned element_size = 2;
 
         PottsMeshGenerator<3> generator(domain_size, element_number, element_size, domain_size, element_number, element_size, domain_size, element_number, element_size);
-        PottsMesh<3>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<3> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -658,7 +667,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(10, 1, 4, 10, 1, 4);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -686,23 +695,23 @@ public:
         simulator.Solve();
 
         // Check some results
-        PottsElement<2>* element_0 = static_cast <PottsBasedCellPopulation<2>*>(&simulator.rGetCellPopulation())->GetElement(0u);
-        TS_ASSERT_EQUALS(element_0->GetNumNodes(), 16u);
+        PottsElement<2>* p_element_0 = static_cast <PottsBasedCellPopulation<2>*>(&simulator.rGetCellPopulation())->GetElement(0u);
+        TS_ASSERT_EQUALS(p_element_0->GetNumNodes(), 16u);
         mNodes[0] = 33;
         mNodes[1] = 36;
         mNodes[2] = 63;
-        TS_ASSERT_EQUALS(element_0->GetNode(0)->GetIndex(), mNodes[0]);
-        TS_ASSERT_EQUALS(element_0->GetNode(8)->GetIndex(), mNodes[1]);
-        TS_ASSERT_EQUALS(element_0->GetNode(15)->GetIndex(), mNodes[2]);
+        TS_ASSERT_EQUALS(p_element_0->GetNode(0)->GetIndex(), mNodes[0]);
+        TS_ASSERT_EQUALS(p_element_0->GetNode(8)->GetIndex(), mNodes[1]);
+        TS_ASSERT_EQUALS(p_element_0->GetNode(15)->GetIndex(), mNodes[2]);
 
         mNodes[3] = 55;
         mNodes[4] = 83;
         mNodes[5] = 94;
-        PottsElement<2>* element_1 = static_cast <PottsBasedCellPopulation<2>*>(&simulator.rGetCellPopulation())->GetElement(1u);
-        TS_ASSERT_EQUALS(element_1->GetNumNodes(), 16u);
-        TS_ASSERT_EQUALS(element_1->GetNode(0)->GetIndex(), mNodes[3]);
-        TS_ASSERT_EQUALS(element_1->GetNode(8)->GetIndex(), mNodes[4]);
-        TS_ASSERT_EQUALS(element_1->GetNode(15)->GetIndex(), mNodes[5]);
+        PottsElement<2>* p_element_1 = static_cast <PottsBasedCellPopulation<2>*>(&simulator.rGetCellPopulation())->GetElement(1u);
+        TS_ASSERT_EQUALS(p_element_1->GetNumNodes(), 16u);
+        TS_ASSERT_EQUALS(p_element_1->GetNode(0)->GetIndex(), mNodes[3]);
+        TS_ASSERT_EQUALS(p_element_1->GetNode(8)->GetIndex(), mNodes[4]);
+        TS_ASSERT_EQUALS(p_element_1->GetNode(15)->GetIndex(), mNodes[5]);
     }
 
     void TestSave()
@@ -711,7 +720,7 @@ public:
 
         // Create a simple 2D PottsMesh
         PottsMeshGenerator<2> generator(10, 1, 4, 10, 1, 4);
-        PottsMesh<2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<PottsMesh<2> > p_mesh = generator.GetMesh();
 
         // Create cells
         std::vector<CellPtr> cells;
@@ -762,17 +771,17 @@ public:
         p_simulator2->Solve();
 
         // These results are from time 20.0 in TestStandardResultForArchivingTestsBelow()
-        PottsElement<2>* element_0 = static_cast <PottsBasedCellPopulation<2>*>(&p_simulator2->rGetCellPopulation())->GetElement(0u);
-        TS_ASSERT_EQUALS(element_0->GetNumNodes(), 16u);
-        TS_ASSERT_EQUALS(element_0->GetNode(0)->GetIndex(), mNodes[0]);
-        TS_ASSERT_EQUALS(element_0->GetNode(8)->GetIndex(), mNodes[1]);
-        TS_ASSERT_EQUALS(element_0->GetNode(15)->GetIndex(), mNodes[2]);
+        PottsElement<2>* p_element_0 = static_cast <PottsBasedCellPopulation<2>*>(&p_simulator2->rGetCellPopulation())->GetElement(0u);
+        TS_ASSERT_EQUALS(p_element_0->GetNumNodes(), 16u);
+        TS_ASSERT_EQUALS(p_element_0->GetNode(0)->GetIndex(), mNodes[0]);
+        TS_ASSERT_EQUALS(p_element_0->GetNode(8)->GetIndex(), mNodes[1]);
+        TS_ASSERT_EQUALS(p_element_0->GetNode(15)->GetIndex(), mNodes[2]);
 
-        PottsElement<2>* element_1 = static_cast <PottsBasedCellPopulation<2>*>(&p_simulator2->rGetCellPopulation())->GetElement(1u);
-        TS_ASSERT_EQUALS(element_1->GetNumNodes(), 16u);
-        TS_ASSERT_EQUALS(element_1->GetNode(0)->GetIndex(), mNodes[3]);
-        TS_ASSERT_EQUALS(element_1->GetNode(8)->GetIndex(), mNodes[4]);
-        TS_ASSERT_EQUALS(element_1->GetNode(15)->GetIndex(), mNodes[5]);
+        PottsElement<2>* p_element_1 = static_cast <PottsBasedCellPopulation<2>*>(&p_simulator2->rGetCellPopulation())->GetElement(1u);
+        TS_ASSERT_EQUALS(p_element_1->GetNumNodes(), 16u);
+        TS_ASSERT_EQUALS(p_element_1->GetNode(0)->GetIndex(), mNodes[3]);
+        TS_ASSERT_EQUALS(p_element_1->GetNode(8)->GetIndex(), mNodes[4]);
+        TS_ASSERT_EQUALS(p_element_1->GetNode(15)->GetIndex(), mNodes[5]);
 
         // Tidy up
         delete p_simulator1;

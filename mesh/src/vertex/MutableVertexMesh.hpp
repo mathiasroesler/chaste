@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -49,8 +49,10 @@ class VertexMeshWriter;
 #include <boost/serialization/split_member.hpp>
 
 #include "VertexMesh.hpp"
+#include "EdgeHelper.hpp"
 #include "RandomNumberGenerator.hpp"
 
+#include "VertexMeshOperationRecorder.hpp"
 /**
  * A mutable vertex-based mesh class, which inherits from VertexMesh and allows for local
  * remeshing. This is implemented through simple operations including node merging, neighbour
@@ -67,8 +69,15 @@ class MutableVertexMesh : public VertexMesh<ELEMENT_DIM, SPACE_DIM>
     friend class TestMutableVertexMesh;
     friend class TestMutableVertexMeshReMesh;
     friend class TestMutableVertexMeshRosetteMethods;
-
+    friend class TestMutableVertexEdges;
+    friend class TestCellEdgeInteriorSrn;
+    friend class TestMutableVertexMeshOperationsWithPopulationSrn;
 protected:
+    /** Whether we need to record mesh operations, e.g. when SRN models are used */
+    bool mTrackMeshOperations = false;
+
+    /** Helper class to record rearrangements and mesh operations */
+    VertexMeshOperationRecorder<ELEMENT_DIM, SPACE_DIM> mOperationRecorder = (VertexMeshOperationRecorder<ELEMENT_DIM, SPACE_DIM>());
 
     /** The minimum distance apart that two nodes in the mesh can be without causing element rearrangement. */
     double mCellRearrangementThreshold;
@@ -94,6 +103,9 @@ protected:
     /** Whether to check for edges intersections (true) or not (false). */
     bool mCheckForInternalIntersections;
 
+    /** Whether to check for T3 swaps (true) or not (false). */
+    bool mCheckForT3Swaps;
+
     /** Indices of nodes that have been deleted. These indices can be reused when adding new elements/nodes. */
     std::vector<unsigned> mDeletedNodeIndices;
 
@@ -109,21 +121,9 @@ protected:
     double mDistanceForT3SwapChecking;
 
     /**
-     * Locations of T1 swaps (the mid point of the moving nodes), stored so they can be accessed and output by the cell population.
-     * The locations are stored until they are cleared by ClearLocationsOfT1Swaps().
-     */
-    std::vector< c_vector<double, SPACE_DIM> > mLocationsOfT1Swaps;
-
-    /**
      * The location of the last T2 swap (the centre of the removed triangle), stored so it can be accessed by the T2SwapCellKiller.
      */
     c_vector<double, SPACE_DIM> mLastT2SwapLocation;
-
-    /**
-     * Locations of T3 swaps (the location of the intersection with the edge), stored so they can be accessed and output by the cell population.
-     * The locations are stored until they are cleared by ClearLocationsOfT3Swaps().
-     */
-    std::vector< c_vector<double, SPACE_DIM> > mLocationsOfT3Swaps;
 
     /**
      * Locations of intersection swaps (the mid point of the switching nodes), stored so they can be accessed and output by the cell population.
@@ -143,7 +143,7 @@ protected:
      *
      * @return the index of the new element
      */
-    unsigned DivideElement(VertexElement<ELEMENT_DIM,SPACE_DIM>* pElement,
+    unsigned DivideElement(VertexElement<ELEMENT_DIM, SPACE_DIM>* pElement,
                            unsigned nodeAIndex,
                            unsigned nodeBIndex,
                            bool placeOriginalElementBelow=false);
@@ -182,7 +182,7 @@ protected:
      * @param pNodeB the other node to perform the swap
      */
     virtual void IdentifySwapType(Node<SPACE_DIM>* pNodeA, Node<SPACE_DIM>* pNodeB);
-
+public:
     /**
      * Helper method for ReMesh(), called by IdentifySwapType().
      *
@@ -194,7 +194,7 @@ protected:
      * @param pNodeB the other node to perform the merge with
      */
     void PerformNodeMerge(Node<SPACE_DIM>* pNodeA, Node<SPACE_DIM>* pNodeB);
-
+private:
     /**
      * Helper method for ReMesh(), called by IdentifySwapType().
      *
@@ -230,7 +230,7 @@ protected:
      *
      * @param rElement the element to remove
      */
-    void PerformT2Swap(VertexElement<ELEMENT_DIM,SPACE_DIM>& rElement);
+    void PerformT2Swap(VertexElement<ELEMENT_DIM, SPACE_DIM>& rElement);
 
     /**
      * Helper method for ReMesh(), called by CheckForIntersections().
@@ -324,7 +324,7 @@ protected:
      *
      * @return intersection, the corrected location of where we are planning to put the merged node
      */
-    c_vector<double, 2> WidenEdgeOrCorrectIntersectionLocationIfNecessary(unsigned indexA, unsigned indexB, c_vector<double,2> intersection);
+    c_vector<double, 2> WidenEdgeOrCorrectIntersectionLocationIfNecessary(unsigned indexA, unsigned indexB, c_vector<double, 2> intersection);
 
     /** Needed for serialization. */
     friend class boost::serialization::access;
@@ -353,11 +353,12 @@ protected:
         archive & mDeletedNodeIndices;
         archive & mDeletedElementIndices;
         archive & mDistanceForT3SwapChecking;
+        archive & mOperationRecorder;
+        archive & mCheckForT3Swaps;
+        archive & mCheckForT3Swaps;
         ///\todo: maybe we should archive the mLocationsOfT1Swaps and mDeletedNodeIndices etc. as well?
-
         archive & boost::serialization::base_object<VertexMesh<ELEMENT_DIM, SPACE_DIM> >(*this);
     }
-
 public:
 
     /**
@@ -453,6 +454,13 @@ public:
     void SetCheckForInternalIntersections(bool checkForInternalIntersections);
 
     /**
+     * Set method for mCheckForT3Swaps.
+     *
+     * @param checkForT3Swaps
+     */
+    void SetCheckForT3Swaps(bool checkForT3Swaps);
+
+    /**
      * @return mCellRearrangementThreshold
      */
     double GetCellRearrangementThreshold() const;
@@ -521,6 +529,13 @@ public:
     bool GetCheckForInternalIntersections() const;
 
     /**
+     * This is a shortcut to get locations from mOperationRecorder
+     * @return the locations of the T3 swaps
+     * @return mCheckForT3Swaps, either to check for T3 swaps or not.
+     */
+    bool GetCheckForT3Swaps() const;
+
+    /**
      * @return the locations of the T1 swaps
      */
     std::vector< c_vector<double, SPACE_DIM> > GetLocationsOfT1Swaps();
@@ -531,6 +546,7 @@ public:
     c_vector<double, SPACE_DIM> GetLastT2SwapLocation();
 
     /**
+     * This is a shortcut to get locations from mOperationRecorder
      * @return the locations of the T3 swaps
      */
     std::vector< c_vector<double, SPACE_DIM> > GetLocationsOfT3Swaps();
@@ -591,7 +607,7 @@ public:
      *
      * @return the index of the new element
      */
-    unsigned DivideElementAlongShortAxis(VertexElement<ELEMENT_DIM,SPACE_DIM>* pElement,
+    unsigned DivideElementAlongShortAxis(VertexElement<ELEMENT_DIM, SPACE_DIM>* pElement,
                                          bool placeOriginalElementBelow=false);
 
     /**
@@ -607,7 +623,7 @@ public:
      *
      * @return the index of the new element
      */
-    unsigned DivideElementAlongGivenAxis(VertexElement<ELEMENT_DIM,SPACE_DIM>* pElement,
+    unsigned DivideElementAlongGivenAxis(VertexElement<ELEMENT_DIM, SPACE_DIM>* pElement,
                                          c_vector<double, SPACE_DIM> axisOfDivision,
                                          bool placeOriginalElementBelow=false);
 
@@ -683,6 +699,16 @@ public:
      * \todo This method seems to be redundant; remove it? (#2401)
      */
     void ReMesh();
+
+    /**
+     * @param track whether we need to track mesh operations during ReMesh
+     */
+    void SetMeshOperationTracking(const bool track);
+
+    /**
+     * @return pointer to the VertexMeshOperationRecorder
+     */
+    VertexMeshOperationRecorder<ELEMENT_DIM, SPACE_DIM>* GetOperationRecorder();
 };
 
 #include "SerializationExportWrapper.hpp"

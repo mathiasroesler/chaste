@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2021, University of Oxford.
+Copyright (c) 2005-2023, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -140,7 +140,7 @@ public:
          * object to return the mesh, which is of type {{{MutableMesh}}}.
          */
         HoneycombMeshGenerator generator(10, 10, 0);
-        MutableMesh<2,2>* p_mesh = generator.GetMesh();
+        boost::shared_ptr<MutableMesh<2,2> > p_mesh = generator.GetMesh();
 
         /*
          * Next, we need to create some cells. Unlike in the the crypt simulation
